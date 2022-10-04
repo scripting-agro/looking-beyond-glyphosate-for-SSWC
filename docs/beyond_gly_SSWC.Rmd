@@ -1,0 +1,1039 @@
+---
+title: "Plant Survival Data Analysis"
+author: '490416255'
+output:
+  html_document:
+    code_folding:
+    fig_caption: yes
+    number_sections: yes
+    self_contained: yes
+    theme: journal
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  word_document:
+    toc: yes
+    toc_depth: '3'
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+```{r include = FALSE}
+require(dplyr)
+require(ggplot2)
+require(readxl)
+require(agricolae)
+require(emmeans)
+require(lattice)
+require(lme4)
+require(nlme)
+require(car)
+require(glmmTMB)
+require(brms)
+require(rms)
+require(broom.mixed)
+require(multcomp)
+require(multcompView)
+require(MASS)
+require(olsrr)
+```
+
+# Survival
+
+```{r}
+biomass_data_run1 <- read_xlsx("biomass_data.xlsx", sheet = "Run1")
+biomass_data_run2 <- read_xlsx("biomass_data.xlsx", sheet = "Run2")
+```
+
+## Comparison between C. virgata Experiments
+
+```{r}
+biomass_data_run1_trim <- biomass_data_run1[,-c(1, 2, 4, 6, 10)]
+biomass_data_run2_trim <- biomass_data_run2[,-c(1, 2, 4, 6, 8)]
+```
+
+Selecting FTR rows
+
+```{r}
+biomass_data_run1_FTR <- filter(biomass_data_run1_trim, Species == "FTR")
+biomass_data_run2_FTR <- filter(biomass_data_run2_trim, Species == "FTR")
+```
+
+Creating survival column
+
+```{r}
+biomass_data_run1_FTR_survival <- mutate(biomass_data_run1_FTR, survival = ((Number_surviving_after_28_days/Plant_Number)))
+
+biomass_data_run2_FTR_survival <- mutate(biomass_data_run2_FTR, survival = ((Number_surviving_after_28_days/Plant_Number)))
+```
+
+Combining data sets
+
+```{r}
+survival_FTR_combine <- bind_rows(biomass_data_run1_FTR_survival, biomass_data_run2_FTR_survival, .id = "id")
+```
+
+```{r}
+survival_FTR_combine$id <- as.factor(survival_FTR_combine$id) 
+survival_FTR_combine$Block <- as.factor(survival_FTR_combine$Block) 
+survival_FTR_combine$Treatment <- as.factor(survival_FTR_combine$Treatment) 
+```
+
+```{r}
+vor_remove <- c("vor", "para/vor") #Remove voraxor involved treatments
+
+survival_FTR_combine_filter <- filter(survival_FTR_combine, !Treatment %in% vor_remove)
+
+glmer.FTR_survival <- glmer(survival ~ id + (1|Block), family = binomial, data = survival_FTR_combine_filter)
+summary(glmer.FTR_survival)
+```
+
+Can't combine as p < 0.05
+
+## Comparison between S. oleraceus Experiments
+
+Selecting ST rows
+
+```{r}
+biomass_data_run1_ST <- filter(biomass_data_run1_trim, Species == "ST")
+biomass_data_run2_ST <- filter(biomass_data_run2_trim, Species == "ST")
+```
+
+Creating survival column
+
+```{r}
+biomass_data_run1_ST_survival <- mutate(biomass_data_run1_ST, survival = ((Number_surviving_after_28_days/Plant_Number)))
+
+biomass_data_run2_ST_survival <- mutate(biomass_data_run2_ST, survival = ((Number_surviving_after_28_days/Plant_Number)))
+```
+
+Combining data sets
+
+```{r}
+survival_ST_combine <- bind_rows(biomass_data_run1_ST_survival, biomass_data_run2_ST_survival, .id = "id")
+```
+
+```{r}
+survival_ST_combine$id <- as.factor(survival_ST_combine$id) 
+survival_ST_combine$Block <- as.factor(survival_ST_combine$Block) 
+survival_ST_combine$Treatment <- as.factor(survival_ST_combine$Treatment) 
+```
+
+```{r}
+glmer.ST_survival <- glmer(survival ~ id + (1|Block), family = binomial, data = survival_ST_combine)
+summary(glmer.ST_survival)
+```
+
+Can't combine as p < 0.05
+
+## C. virgata Analysis
+
+### Run 1
+
+Generalised least squares regression
+
+```{r}
+biomass_data_run1_FTR_survival <- mutate(biomass_data_run1_FTR_survival, asin_percent_damage = (asin(sqrt(survival))))
+
+biomass_data_run1_FTR_survival <- mutate(biomass_data_run1_FTR_survival, asin_backtrans_percent_damage = ((sin(asin_percent_damage))^2))
+
+gls.FTR_R1_survival_M1 <- gls(asin_percent_damage ~ Treatment + Block, data = biomass_data_run1_FTR_survival)
+
+plot(gls.FTR_R1_survival_M1) # Fanning residuals - model assumptions were not met
+```
+
+Backtranformed means
+
+```{r}
+avg_asin_FTR_R1_survival <- biomass_data_run1_FTR_survival %>%
+  group_by(Treatment) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_sin_FTR_R1_survival <- mutate(avg_asin_FTR_R1_survival, mean_asin_backtrans = ((sin(mean_asin))^2))
+
+avg_sin_FTR_R1_survival
+```
+
+### Run 2
+
+```{r}
+biomass_data_run2_FTR_survival$Treatment <- as.factor(biomass_data_run2_FTR_survival$Treatment) 
+biomass_data_run2_FTR_survival$Block <- as.factor(biomass_data_run2_FTR_survival$Block)
+```
+
+```{r}
+biomass_data_run2_FTR_survival <- mutate(biomass_data_run2_FTR_survival, asin_percent_damage = (asin(sqrt(survival))))
+
+biomass_data_run2_FTR_survival <- mutate(biomass_data_run2_FTR_survival, asin_backtrans_percent_damage = ((sin(asin_percent_damage))^2))
+
+gls.FTR_R2_survival <- gls(asin_percent_damage ~ Treatment + Block, data = biomass_data_run2_FTR_survival)
+
+plot(gls.FTR_R2_survival)
+
+Anova(gls.FTR_R2_survival)
+
+emm.FTR_R2_Survival <- emmeans(gls.FTR_R2_survival, specs = ~ Treatment)
+
+cld(emm.FTR_R2_Survival) 
+```
+
+Backtransformed means
+
+```{r}
+avg_asin_FTR_R2_survival <- biomass_data_run2_FTR_survival %>%
+  group_by(Treatment) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_sin_FTR_R2_survival <- mutate(avg_asin_FTR_R2_survival, mean_asin_backtrans = ((sin(mean_asin))^2))
+
+avg_sin_FTR_R2_survival
+```
+
+
+## S. oleraceus Analysis
+
+### Run 1
+
+```{r}
+biomass_data_run1_ST_survival <- mutate(biomass_data_run1_ST_survival, asin_percent_damage = (asin(sqrt(survival))))
+
+biomass_data_run1_ST_survival <- mutate(biomass_data_run1_ST_survival, asin_backtrans_percent_damage = ((sin(asin_percent_damage))^2))
+
+gls.ST_R1_survival <- gls(asin_percent_damage ~ Treatment + Block, data = biomass_data_run1_ST_survival)
+
+plot(gls.ST_R1_survival)
+
+Anova(gls.ST_R1_survival)
+
+emm.ST_R1_Survival <- emmeans(gls.ST_R1_survival, specs = ~ Treatment)
+
+cld(emm.ST_R1_Survival) 
+```
+
+```{r}
+avg_asin_ST_R1_survival <- biomass_data_run1_ST_survival %>%
+  group_by(Treatment) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_sin_ST_R1_survival <- mutate(avg_asin_ST_R1_survival, mean_asin_backtrans = ((sin(mean_asin))^2))
+
+avg_sin_ST_R1_survival
+```
+
+### Run 2
+
+```{r}
+biomass_data_run2_ST_survival$Treatment <- as.factor(biomass_data_run2_ST_survival$Treatment) 
+biomass_data_run2_ST_survival$Block <- as.factor(biomass_data_run2_ST_survival$Block)
+```
+
+```{r}
+biomass_data_run2_ST_survival <- mutate(biomass_data_run2_ST_survival, asin_percent_damage = (asin(sqrt(survival))))
+
+biomass_data_run2_ST_survival <- mutate(biomass_data_run2_ST_survival, asin_backtrans_percent_damage = ((sin(asin_percent_damage))^2))
+
+gls.ST_R2_survival <- gls(asin_percent_damage ~ Treatment + Block, data = biomass_data_run2_ST_survival)
+
+plot(gls.ST_R2_survival)
+
+Anova(gls.ST_R2_survival)
+
+emm.ST_R2_Survival <- emmeans(gls.ST_R2_survival, specs = ~ Treatment)
+
+cld(emm.ST_R2_Survival) 
+```
+
+```{r}
+avg_asin_ST_R2_survival <- biomass_data_run2_ST_survival %>%
+  group_by(Treatment) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_sin_ST_R2_survival <- mutate(avg_asin_ST_R2_survival, mean_asin_backtrans = ((sin(mean_asin))^2))
+```
+
+
+## Conyza spp. Analysis
+
+### Run 1
+
+```{r}
+biomass_data_run1_FB <- filter(biomass_data_run1_trim, Species == "FB")
+biomass_data_run1_FB_survival <- mutate(biomass_data_run1_FB, survival = ((Number_surviving_after_28_days/Plant_Number)))
+biomass_data_run1_FB_survival_clean <- biomass_data_run1_FB_survival[complete.cases(biomass_data_run1_FB_survival),]
+```
+
+```{r}
+biomass_data_run1_FB_survival_clean_asin <- mutate(biomass_data_run1_FB_survival_clean, asin_percent_damage=(asin(sqrt(survival))))
+
+gls.FB_R1_survival <- gls(asin_percent_damage ~ Treatment + Block, data = biomass_data_run1_FB_survival_clean_asin)
+
+plot(gls.FB_R1_survival)
+
+Anova(gls.FB_R1_survival)
+
+emm.FB_R1_Survival <- emmeans(gls.FB_R1_survival, specs = ~ Treatment)
+
+cld(emm.FB_R1_Survival) 
+```
+
+```{r}
+avg_asin_FB_R1_survival <- biomass_data_run1_FB_survival_clean_asin %>%
+  group_by(Treatment) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_sin_FB_R1_survival <- mutate(avg_asin_FB_R1_survival, mean_asin_backtrans = ((sin(mean_asin))^2))
+
+avg_sin_FB_R1_survival
+```
+
+
+### Run 2
+
+```{r}
+biomass_data_run2_FB <- filter(biomass_data_run2_trim, Species == "FB")
+biomass_data_run2_FB_survival <- mutate(biomass_data_run2_FB, survival = ((Number_surviving_after_28_days/Plant_Number)))
+```
+
+```{r}
+biomass_data_run2_FB_survival <- mutate(biomass_data_run2_FB_survival, asin_percent_damage = (asin(sqrt(survival))))
+
+gls.FB_R2_survival <- gls(asin_percent_damage ~ Treatment + Block, data = biomass_data_run2_FB_survival)
+
+plot(gls.FB_R2_survival)
+
+Anova(gls.FB_R2_survival)
+
+emm.FB_R2_Survival <- emmeans(gls.FB_R2_survival, specs = ~ Treatment)
+
+cld(emm.FB_R2_Survival) 
+```
+
+```{r}
+avg_asin_FB_R2_survival <- biomass_data_run2_FB_survival %>%
+  group_by(Treatment) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_sin_FB_R2_survival <- mutate(avg_asin_FB_R2_survival, mean_asin_backtrans = ((sin(mean_asin))^2))
+
+avg_sin_FB_R2_survival
+```
+
+# Biomass
+
+```{r}
+biomass_data_run1 <- read_xlsx("biomass_data.xlsx", sheet = "Run1")
+biomass_data_run2 <- read_xlsx("biomass_data.xlsx", sheet = "Run2")
+```
+
+## Comparison between C. virgata Experiments
+
+```{r}
+biomass_data_run1_trim <- biomass_data_run1[,-c(1, 3, 4, 6)]
+biomass_data_run2_trim <- biomass_data_run2[,-c(1, 3, 4, 6, 8)]
+```
+
+Selecting FTR rows
+
+```{r}
+biomass_data_run1_FTR <- filter(biomass_data_run1_trim, Species == "FTR")
+biomass_data_run2_FTR <- filter(biomass_data_run2_trim, Species == "FTR")
+```
+
+Creating weight/surviving plants column
+
+```{r}
+biomass_data_run1_FTR_weights <- mutate(biomass_data_run1_FTR, weight_per_plant = (Weight/Number_surviving_after_28_days))
+biomass_data_run2_FTR_weights <- mutate(biomass_data_run2_FTR, weight_per_plant = (Weight/Number_surviving_after_28_days))
+```
+
+Combining data sets (weight/plant)
+
+```{r}
+biomass_FTR_combine <- bind_rows(biomass_data_run1_FTR_weights, biomass_data_run2_FTR_weights, .id = "id")
+```
+
+NA's = 0
+
+```{r}
+biomass_FTR_combine[is.na(biomass_FTR_combine)] = 0
+```
+
+
+T-Test
+
+```{r}
+biomass_FTR_combine$id <- as.factor(biomass_FTR_combine$id) 
+biomass_FTR_combine$Block <- as.factor(biomass_FTR_combine$Block) 
+biomass_FTR_combine$Treatment <- as.factor(biomass_FTR_combine$Treatment) 
+
+vor_remove <- c("vor", "para/vor")
+
+biomass_FTR_combine_filter <- filter(biomass_FTR_combine, !Treatment %in% vor_remove) #Removing voraxor involved treatments
+
+aov.FTR_weights <- aov(weight_per_plant ~ id + Block, data = biomass_FTR_combine)
+
+plot(aov.FTR_weights)
+
+summary(aov.FTR_weights)
+```
+
+
+Can't combine FTR as p < 0.05
+
+## Comparison between S. oleraceus Experiments
+
+Selecting ST rows
+
+```{r}
+biomass_data_run1_ST <- filter(biomass_data_run1_trim, Species == "ST")
+biomass_data_run2_ST <- filter(biomass_data_run2_trim, Species == "ST")
+```
+
+Creating weight/surviving plants column
+
+```{r}
+biomass_data_run1_ST_weights <- mutate(biomass_data_run1_ST, weight_per_plant = (Weight/Number_surviving_after_28_days))
+biomass_data_run2_ST_weights <- mutate(biomass_data_run2_ST, weight_per_plant = (Weight/Number_surviving_after_28_days))
+```
+
+Combining data sets
+
+```{r}
+biomass_ST_combine <- bind_rows(biomass_data_run1_ST_weights, biomass_data_run2_ST_weights, .id = "id")
+```
+
+NA's = 0
+
+```{r}
+biomass_ST_combine[is.na(biomass_ST_combine)] = 0
+```
+
+
+T-Test
+
+```{r}
+biomass_ST_combine$id <- as.factor(biomass_ST_combine$id) 
+biomass_ST_combine$Block <- as.factor(biomass_ST_combine$Block) 
+biomass_ST_combine$Treatment <- as.factor(biomass_ST_combine$Treatment) 
+
+aov.ST_weights <- aov(weight_per_plant ~ id + Block, data = biomass_ST_combine)
+
+plot(aov.ST_weights)
+
+summary(aov.ST_weights)
+```
+
+Can combine ST as p > 0.05
+
+## C. virgata Analysis
+
+### Run 1
+
+```{r}
+biomass_data_run1_FTR_weights$Block <- as.factor(biomass_data_run1_FTR_weights$Block) 
+biomass_data_run1_FTR_weights$Treatment <- as.factor(biomass_data_run1_FTR_weights$Treatment) 
+
+FTR_R1_aov <- aov(weight_per_plant ~ Treatment + Block, data = biomass_data_run1_FTR_weights)
+```
+
+```{r}
+plot(FTR_R1_aov)
+
+summary(FTR_R1_aov)
+```
+
+Posthoc
+
+```{r}
+FTR_R1_aov_tukey <- HSD.test(FTR_R1_aov, group = TRUE, trt = "Treatment")
+
+FTR_R1_aov_tukey$groups
+```
+
+### Run 2
+
+```{r}
+biomass_data_run2_FTR_weights[is.na(biomass_data_run2_FTR_weights)] = 0
+
+biomass_data_run2_FTR_weights$Block <- as.factor(biomass_data_run2_FTR_weights$Block) 
+biomass_data_run2_FTR_weights$Treatment <- as.factor(biomass_data_run2_FTR_weights$Treatment) 
+
+FTR_R2_aov <- aov(weight_per_plant ~ Treatment + Block, data = biomass_data_run2_FTR_weights)
+```
+
+```{r}
+plot(FTR_R2_aov)
+
+summary(FTR_R2_aov)
+```
+
+Posthoc
+
+```{r}
+FTR_R2_aov_tukey <- HSD.test(FTR_R2_aov, group = TRUE, trt = "Treatment")
+
+FTR_R2_aov_tukey$groups
+```
+
+## S. oleraceus Analysis
+
+### Run 1
+
+```{r}
+biomass_data_run1_ST_weights[is.na(biomass_data_run1_ST_weights)] = 0
+
+biomass_data_run1_ST_weights$Block <- as.factor(biomass_data_run1_ST_weights$Block) 
+biomass_data_run1_ST_weights$Treatment <- as.factor(biomass_data_run1_ST_weights$Treatment) 
+
+ST_R1_aov <- aov(weight_per_plant ~ Treatment + Block, data = biomass_data_run1_ST_weights)
+```
+
+```{r}
+plot(ST_R1_aov)
+
+summary(ST_R1_aov)
+```
+
+Posthoc
+
+```{r}
+ST_R1_aov_tukey <- HSD.test(ST_R1_aov, group = TRUE, trt = "Treatment")
+
+ST_R1_aov_tukey$groups
+```
+
+### Run 2
+
+```{r}
+biomass_data_run2_ST_weights[is.na(biomass_data_run2_ST_weights)] = 0
+biomass_data_run2_ST_weights$Block <- as.factor(biomass_data_run2_ST_weights$Block) 
+biomass_data_run2_ST_weights$Treatment <- as.factor(biomass_data_run2_ST_weights$Treatment) 
+
+ST_R2_aov <- aov(weight_per_plant ~ Treatment + Block, data = biomass_data_run2_ST_weights)
+```
+
+```{r}
+plot(ST_R2_aov)
+
+summary(ST_R2_aov)
+```
+
+Posthoc
+
+```{r}
+ST_R2_aov_tukey <- HSD.test(ST_R2_aov, group = TRUE, trt = "Treatment")
+
+ST_R2_aov_tukey$groups
+```
+
+## Conyza spp. Analysis
+
+### Run 1
+
+```{r}
+biomass_data_run1_FB <- filter(biomass_data_run1, Species == "FB")
+
+biomass_data_run1_FB_trim <- biomass_data_run1_FB[,-c(1, 3, 4, 5, 6, 9)]
+biomass_data_run1_FB_trim <- biomass_data_run1_FB_trim[complete.cases(biomass_data_run1_FB$Weight),]
+
+biomass_data_run1_FB_weights <- mutate(biomass_data_run1_FB_trim, weight_per_plant = (Weight/Number_surviving_after_28_days))
+
+biomass_data_run1_FB_weights[is.na(biomass_data_run1_FB_weights)] = 0
+```
+
+
+```{r}
+biomass_data_run1_FB_weights$Fleabane_block <- as.factor(biomass_data_run1_FB_weights$Fleabane_block) 
+biomass_data_run1_FB_weights$Treatment <- as.factor(biomass_data_run1_FB_weights$Treatment) 
+
+FB_R1_aov <- aov(weight_per_plant ~ Treatment + Fleabane_block, data = biomass_data_run1_FB_weights)
+```
+
+```{r}
+plot(FB_R1_aov)
+
+summary(FB_R1_aov)
+```
+
+Posthoc
+
+```{r}
+FB_R1_aov_tukey <- HSD.test(FB_R1_aov, group = TRUE, trt = "Treatment")
+
+FB_R1_aov_tukey$groups
+```
+
+### Run 2
+
+```{r}
+biomass_data_run2_FB <- filter(biomass_data_run2_trim, Species == "FB")
+biomass_data_run2_FB_weights <- mutate(biomass_data_run2_FB, weight_per_plant = (Weight/Number_surviving_after_28_days))
+biomass_data_run2_FB_weights[is.na(biomass_data_run2_FB_weights)] = 0
+```
+
+
+```{r}
+biomass_data_run2_FB_weights$Block <- as.factor(biomass_data_run2_FB_weights$Block) 
+biomass_data_run2_FB_weights$Treatment <- as.factor(biomass_data_run2_FB_weights$Treatment) 
+
+FB_R2_aov <- aov(weight_per_plant ~ Treatment + Block, data = biomass_data_run2_FB_weights)
+```
+
+```{r}
+plot(FB_R2_aov)
+
+summary(FB_R2_aov)
+```
+
+Posthoc
+
+```{r}
+FB_R2_aov_tukey <- HSD.test(FB_R2_aov, group = TRUE, trt = "Treatment")
+
+FB_R2_aov_tukey$groups
+```
+
+# Visual Injury
+
+```{r}
+damage_data_run1 <- read_xlsx("damage_data.xlsx", sheet = "Run1")
+damage_data_run2 <- read_xlsx("damage_data.xlsx", sheet = "Run2")
+```
+
+## Comparison between C. virgata Experiments
+
+```{r}
+damage_data_run1_trim <- damage_data_run1[,-c(1, 5)]
+damage_data_run2_trim <- damage_data_run2[,-c(1)]
+```
+
+Selecting FTR rows
+
+```{r}
+damage_data_run1_FTR <- filter(damage_data_run1_trim, Species == "FTR")
+damage_data_run2_FTR <- filter(damage_data_run2_trim, Species == "FTR")
+```
+
+Creating percent damage column
+
+```{r}
+damage_data_run1_FTR_percent <- mutate(damage_data_run1_FTR, percent_damage = (`Percent Plant Damage`/100))
+damage_data_run2_FTR_percent <- mutate(damage_data_run2_FTR, percent_damage = (`Percent Plant Damage`/100))
+```
+
+Combining data sets
+
+```{r}
+damage_FTR_combine <- bind_rows(damage_data_run1_FTR_percent, damage_data_run2_FTR_percent, .id = "id")
+```
+
+T-test
+
+```{r}
+damage_FTR_combine$id <- as.factor(damage_FTR_combine$id) 
+damage_FTR_combine$Block <- as.factor(damage_FTR_combine$Block) 
+damage_FTR_combine$Treatment <- as.factor(damage_FTR_combine$Treatment) 
+```
+
+```{r}
+vor_remove <- c("vor", "para/vor")
+
+damage_FTR_combine_filter <- filter(damage_FTR_combine, !Treatment %in% vor_remove) #Removing voraxor involved treatments
+
+glmer.FTR_percent <- glmer(percent_damage ~ id + (1|Block), family = binomial, data = damage_FTR_combine)
+```
+
+```{r}
+summary(glmer.FTR_percent)
+```
+
+## Comparison between S. oleraceus Experiments
+
+```{r}
+damage_data_run1_trim <- damage_data_run1[,-c(1, 5)]
+damage_data_run2_trim <- damage_data_run2[,-c(1)]
+```
+
+Selecting ST rows
+
+```{r}
+damage_data_run1_ST <- filter(damage_data_run1_trim, Species == "ST")
+damage_data_run2_ST <- filter(damage_data_run2_trim, Species == "ST")
+```
+
+Creating weight/surviving plants column
+
+```{r}
+damage_data_run1_ST_percent <- mutate(damage_data_run1_ST, percent_damage = (`Percent Plant Damage`/100))
+damage_data_run2_ST_percent <- mutate(damage_data_run2_ST, percent_damage = (`Percent Plant Damage`/100))
+```
+
+Combining data sets
+
+```{r}
+damage_ST_combine <- bind_rows(damage_data_run1_ST_percent, damage_data_run2_ST_percent, .id = "id")
+```
+
+T-test
+
+```{r}
+damage_ST_combine$id <- as.factor(damage_ST_combine$id) 
+damage_ST_combine$Block <- as.factor(damage_ST_combine$Block) 
+damage_ST_combine$Treatment <- as.factor(damage_ST_combine$Treatment) 
+```
+
+```{r}
+glmer.ST_percent <- glmer(percent_damage ~ id + (1|Block), family = binomial, data = damage_ST_combine)
+```
+
+```{r}
+summary(glmer.ST_percent)
+```
+
+## C. virgata Analysis
+
+### Run 1
+
+```{r}
+damage_data_run1_FTR_percent_clean <- damage_data_run1_FTR_percent[complete.cases(damage_data_run1_FTR_percent),]
+
+damage_data_run1_FTR_percent_clean$Day <- as.factor(damage_data_run1_FTR_percent_clean$Day) 
+damage_data_run1_FTR_percent_clean$Treatment <- as.factor(damage_data_run1_FTR_percent_clean$Treatment)
+damage_data_run1_FTR_percent_clean$Block <- as.factor(damage_data_run1_FTR_percent_clean$Block)
+```
+
+
+```{r}
+damage_data_run1_FTR_percent_clean <- mutate(damage_data_run1_FTR_percent_clean, asin_percent_damage = (asin(sqrt(percent_damage))))
+
+cs1<-corCompSymm(0.5,form=~1|Block)
+gls.FTR_R1_percent <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs1, data = damage_data_run1_FTR_percent_clean)
+vfc2<-varIdent(form=~1|Day)
+cs2<-corCompSymm(0.5,form=~1|Block)
+gls.FTR_R2_percent <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs2, weights = vfc2, data = damage_data_run1_FTR_percent_clean)
+cs3 <- corCAR1(form=~1|Block)
+gls.FTR_R3_percent <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs3, data = damage_data_run1_FTR_percent_clean)
+vfc4<-varIdent(form=~1|Day)
+cs4<-corCAR1(form=~1|Block)
+gls.FTR_R4_percent <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs4, weights = vfc4, data = damage_data_run1_FTR_percent_clean)
+
+AIC(gls.FTR_R1_percent)
+AIC(gls.FTR_R2_percent)
+AIC(gls.FTR_R3_percent)
+AIC(gls.FTR_R4_percent)
+
+# R2 model has the lowest AIC
+
+plot(gls.FTR_R2_percent)
+
+Anova(gls.FTR_R2_percent) # interaction is significant
+
+anova(gls.FTR_R2_percent)
+
+emm.FTR_R2_percent <- emmeans(gls.FTR_R2_percent, specs = pairwise ~ Treatment|Day)
+
+cld(emm.FTR_R2_percent)
+```
+
+Back-transformed means
+
+```{r}
+avg_asin_FTR_R1 <- damage_data_run1_FTR_percent_clean %>%
+  group_by(Day) %>%
+  group_by(Treatment, .add = TRUE) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_asin_FTR_R1 <- mutate(avg_asin_FTR_R1, mean_asin_backtrans = ((sin(mean_asin))^2))
+
+avg_asin_FTR_R1
+```
+
+### Run 2
+
+```{r}
+damage_data_run2_FTR_percent_clean <- damage_data_run2_FTR_percent[complete.cases(damage_data_run2_FTR_percent),]
+
+damage_data_run2_FTR_percent_clean$Day <- as.factor(damage_data_run2_FTR_percent_clean$Day) 
+damage_data_run2_FTR_percent_clean$Treatment <- as.factor(damage_data_run2_FTR_percent_clean$Treatment)
+damage_data_run2_FTR_percent_clean$Block <- as.factor(damage_data_run2_FTR_percent_clean$Block)
+```
+
+```{r}
+damage_data_run2_FTR_percent_clean <- mutate(damage_data_run2_FTR_percent_clean, asin_percent_damage = (asin(sqrt(percent_damage))))
+
+cs1<-corCompSymm(0.5,form=~1|Block)
+gls.FTR_R2_percent_M1 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs1, data = damage_data_run2_FTR_percent_clean)
+vfc2<-varIdent(form=~1|Day)
+cs2<-corCompSymm(0.5,form=~1|Block)
+gls.FTR_R2_percent_M2 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs2, weights = vfc2, data = damage_data_run2_FTR_percent_clean)
+cs3 <- corCAR1(form=~1|Block)
+gls.FTR_R2_percent_M3 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs3, data = damage_data_run2_FTR_percent_clean)
+vfc4<-varIdent(form=~1|Day)
+cs4<-corCAR1(form=~1|Block)
+gls.FTR_R2_percent_M4 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs4, weights = vfc4, data = damage_data_run2_FTR_percent_clean)
+
+AIC(gls.FTR_R2_percent_M1)
+AIC(gls.FTR_R2_percent_M2)
+AIC(gls.FTR_R2_percent_M3)
+AIC(gls.FTR_R2_percent_M4)
+
+# M2 has the lowest AIC
+
+plot(gls.FTR_R2_percent)
+
+Anova(gls.FTR_R2_percent_M2) # interaction is significant
+
+emm.FTR_R2_percent_M2 <- emmeans(gls.FTR_R2_percent_M2, specs = pairwise ~ Treatment|Day)
+
+cld(emm.FTR_R2_percent_M2)
+```
+
+Backtransformed means
+
+```{r}
+avg_asin_FTR_R2 <- damage_data_run2_FTR_percent_clean %>%
+  group_by(Day) %>%
+  group_by(Treatment, .add = TRUE) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_asin_FTR_R2 <- mutate(avg_asin_FTR_R2, mean_asin_backtrans = ((sin(mean_asin))^2))
+```
+
+## S. oleraceus Analysis
+
+### Run 1
+
+```{r}
+damage_data_run1_ST_percent_clean <- damage_data_run1_ST_percent[complete.cases(damage_data_run1_ST_percent),]
+
+damage_data_run1_ST_percent_clean$Day <- as.factor(damage_data_run1_ST_percent_clean$Day) 
+damage_data_run1_ST_percent_clean$Treatment <- as.factor(damage_data_run1_ST_percent_clean$Treatment)
+damage_data_run1_ST_percent_clean$Block <- as.factor(damage_data_run1_ST_percent_clean$Block)
+```
+
+```{r}
+damage_data_run1_ST_percent_clean <- mutate(damage_data_run1_ST_percent_clean, asin_percent_damage = (asin(sqrt(percent_damage))))
+
+cs1<-corCompSymm(0.5,form=~1|Block)
+gls.run1_ST_percent_M1 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs1, data = damage_data_run1_ST_percent_clean)
+vfc2<-varIdent(form=~1|Day)
+cs2<-corCompSymm(0.5,form=~1|Block)
+gls.run1_ST_percent_M2 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs2, weights = vfc2, data = damage_data_run1_ST_percent_clean)
+cs3 <- corCAR1(form=~1|Block)
+gls.run1_ST_percent_M3 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs3, data = damage_data_run1_ST_percent_clean)
+vfc4<-varIdent(form=~1|Day)
+cs4<-corCAR1(form=~1|Block)
+gls.run1_ST_percent_M4 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs4, weights = vfc4, data = damage_data_run1_ST_percent_clean)
+
+AIC(gls.run1_ST_percent_M1)
+AIC(gls.run1_ST_percent_M2)
+AIC(gls.run1_ST_percent_M3)
+AIC(gls.run1_ST_percent_M4)
+
+# M2 has the lowest AIC
+
+plot(gls.run1_ST_percent_M2) # Fanning accounted for in weighted variance structure
+
+Anova(gls.run1_ST_percent_M2) # interaction is significant
+
+plot(gls.run1_ST_percent_M2)
+
+emm.run1_ST_percent_M2 <- emmeans(gls.run1_ST_percent_M2, specs = pairwise ~ Treatment|Day)
+
+cld(emm.run1_ST_percent_M2)
+```
+
+Backtransformed means
+
+```{r}
+avg_asin_ST_R1 <- damage_data_run1_ST_percent_clean %>%
+  group_by(Day) %>%
+  group_by(Treatment, .add = TRUE) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_asin_ST_R1 <- mutate(avg_asin_ST_R1, mean_asin_backtrans = ((sin(mean_asin))^2))
+
+avg_asin_ST_R1
+```
+
+### Run 2
+
+```{r}
+damage_data_run2_ST_percent_clean <- damage_data_run2_ST_percent[complete.cases(damage_data_run2_ST_percent),]
+
+damage_data_run2_ST_percent_clean$Day <- as.factor(damage_data_run2_ST_percent_clean$Day) 
+damage_data_run2_ST_percent_clean$Treatment <- as.factor(damage_data_run2_ST_percent_clean$Treatment)
+damage_data_run2_ST_percent_clean$Block <- as.factor(damage_data_run2_ST_percent_clean$Block)
+```
+
+```{r}
+damage_data_run2_ST_percent_clean <- mutate(damage_data_run2_ST_percent_clean, asin_percent_damage = (asin(sqrt(percent_damage))))
+
+cs1<-corCompSymm(0.5,form=~1|Block)
+gls.run2_ST_percent_M1 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs1, data = damage_data_run2_ST_percent_clean)
+vfc2<-varIdent(form=~1|Day)
+cs2<-corCompSymm(0.5,form=~1|Block)
+gls.run2_ST_percent_M2 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs2, weights = vfc2, data = damage_data_run2_ST_percent_clean)
+cs3 <- corCAR1(form=~1|Block)
+gls.run2_ST_percent_M3 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs3, data = damage_data_run2_ST_percent_clean)
+vfc4<-varIdent(form=~1|Day)
+cs4<-corCAR1(form=~1|Block)
+gls.run2_ST_percent_M4 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs4, weights = vfc4, data = damage_data_run2_ST_percent_clean)
+
+AIC(gls.run2_ST_percent_M1)
+AIC(gls.run2_ST_percent_M2)
+AIC(gls.run2_ST_percent_M3)
+AIC(gls.run2_ST_percent_M4)
+
+# M2 has lowest AIC
+
+plot(gls.run2_ST_percent_M2)
+
+Anova(gls.run2_ST_percent_M2) # interaction is significant
+
+emm.run2_ST_percent_M2 <- emmeans(gls.run2_ST_percent_M2, specs = pairwise ~ Treatment|Day)
+
+cld(emm.run2_ST_percent_M2)
+```
+
+Backtransformed means
+
+```{r}
+avg_asin_ST_R2 <- damage_data_run2_ST_percent_clean %>%
+  group_by(Day) %>%
+  group_by(Treatment, .add = TRUE) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_asin_ST_R2 <- mutate(avg_asin_ST_R2, mean_asin_backtrans = ((sin(mean_asin))^2))
+
+avg_asin_ST_R2
+```
+
+## Conyza spp. Analysis
+
+### Run 1
+
+```{r}
+damage_data_run1_FB <- filter(damage_data_run1_trim, Species == "FB")
+damage_data_run1_FB_percent <- mutate(damage_data_run1_FB, percent_damage = (`Percent Plant Damage`/100))
+```
+
+```{r}
+damage_data_run1_FB_percent_clean <- damage_data_run1_FB_percent[complete.cases(damage_data_run1_FB_percent),]
+
+damage_data_run1_FB_percent_clean$Day <- as.factor(damage_data_run1_FB_percent_clean$Day) 
+damage_data_run1_FB_percent_clean$Treatment <- as.factor(damage_data_run1_FB_percent_clean$Treatment)
+damage_data_run1_FB_percent_clean$Block <- as.factor(damage_data_run1_FB_percent_clean$Block)
+```
+
+```{r}
+damage_data_run1_FB_percent_clean <- mutate(damage_data_run1_FB_percent_clean, asin_percent_damage = (asin(sqrt(percent_damage))))
+
+damage_data_run1_FB_percent_clean <- mutate(damage_data_run1_FB_percent_clean, asin_backtrans_percent_damage = ((sin(asin_percent_damage))^2))
+
+cs1<-corCompSymm(0.5,form=~1|Block)
+gls.run1_FB_percent_M1 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs1, data = damage_data_run1_FB_percent_clean)
+vfc2<-varIdent(form=~1|Day)
+cs2<-corCompSymm(0.5,form=~1|Block)
+gls.run1_FB_percent_M2 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs2, weights = vfc2, data = damage_data_run1_FB_percent_clean)
+cs3 <- corCAR1(form=~1|Block)
+gls.run1_FB_percent_M3 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs3, data = damage_data_run1_FB_percent_clean)
+vfc4<-varIdent(form=~1|Day)
+cs4<-corCAR1(form=~1|Block)
+gls.run1_FB_percent_M4 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs4, weights = vfc4, data = damage_data_run1_FB_percent_clean)
+
+AIC(gls.run1_FB_percent_M1)
+AIC(gls.run1_FB_percent_M2)
+AIC(gls.run1_FB_percent_M3)
+AIC(gls.run1_FB_percent_M4)
+
+# M2 has lowest AIC
+
+plot(gls.run1_FB_percent_M2) # Fanning accounted for in weighted variance structure
+
+Anova(gls.run1_FB_percent_M2) # interaction is significant
+
+emm.run1_FB_percent_M2 <- emmeans(gls.run1_FB_percent_M2, specs = pairwise ~ Treatment|Day)
+
+cld(emm.run1_FB_percent_M2)
+```
+
+```{r}
+avg_asin_FB_R1 <- damage_data_run1_FB_percent_clean %>%
+  group_by(Day) %>%
+  group_by(Treatment, .add = TRUE) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_asin_FB_R1 <- mutate(avg_asin_FB_R1, mean_asin_backtrans = ((sin(mean_asin))^2))
+
+avg_asin_FB_R1
+```
+
+### Run 2
+
+```{r}
+damage_data_run2_FB <- filter(damage_data_run2_trim, Species == "FB")
+damage_data_run2_FB_percent <- mutate(damage_data_run2_FB, percent_damage = (`Percent Plant Damage`/100))
+```
+
+```{r}
+damage_data_run2_FB_percent_clean <- damage_data_run2_FB_percent[complete.cases(damage_data_run2_FB_percent),]
+
+damage_data_run2_FB_percent_clean$Day <- as.factor(damage_data_run2_FB_percent_clean$Day) 
+damage_data_run2_FB_percent_clean$Treatment <- as.factor(damage_data_run2_FB_percent_clean$Treatment)
+damage_data_run2_FB_percent_clean$Block <- as.factor(damage_data_run2_FB_percent_clean$Block)
+```
+
+```{r}
+damage_data_run2_FB_percent_clean <- mutate(damage_data_run2_FB_percent_clean, asin_percent_damage = (asin(sqrt(percent_damage))))
+
+avg_asin_FB_R2 <- damage_data_run2_FB_percent_clean %>%
+  group_by(Day) %>%
+  group_by(Treatment, .add = TRUE) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_asin_FB_R2 <- mutate(avg_asin_FB_R2, mean_asin_backtrans = ((sin(mean_asin))^2))
+
+cs1<-corCompSymm(0.5,form=~1|Block)
+gls.run2_FB_percent_M1 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs1, data = damage_data_run2_FB_percent_clean)
+vfc2<-varIdent(form=~1|Day)
+cs2<-corCompSymm(0.5,form=~1|Block)
+gls.run2_FB_percent_M2 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs2, weights = vfc2, data = damage_data_run2_FB_percent_clean)
+cs3 <- corCAR1(form=~1|Block)
+gls.run2_FB_percent_M3 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs3, data = damage_data_run2_FB_percent_clean)
+vfc4<-varIdent(form=~1|Day)
+cs4<-corCAR1(form=~1|Block)
+gls.run2_FB_percent_M4 <- gls(asin_percent_damage ~ Treatment*Day, correlation = cs4, weights = vfc4, data = damage_data_run2_FB_percent_clean)
+
+AIC(gls.run2_FB_percent_M1)
+AIC(gls.run2_FB_percent_M2)
+AIC(gls.run2_FB_percent_M3)
+AIC(gls.run2_FB_percent_M4)
+
+# M2 has the lowest AIC
+
+plot(gls.run2_FB_percent_M2) # Fanning accounted for in weighted variance structure
+
+Anova(gls.run2_FB_percent_M2) # interaction is significant
+
+emm.run2_FB_percent_M2 <- emmeans(gls.run2_FB_percent_M2, specs = pairwise ~Treatment|Day)
+
+cld(emm.run2_FB_percent_M2)
+```
+
+Backtransformed means
+
+```{r}
+avg_asin_FB_R2 <- damage_data_run2_FB_percent_clean %>%
+  group_by(Day) %>%
+  group_by(Treatment, .add = TRUE) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_asin_FB_R2 <- mutate(avg_asin_FB_R2, mean_asin_backtrans = ((sin(mean_asin))^2))
+
+avg_asin_FB_R2
+```
+
+
+
