@@ -1,0 +1,318 @@
+---
+title: "Looking Beyond Glyphosate for Site-Specific Weed Control"
+author: '490416255'
+output:
+  html_document:
+    code_folding:
+    fig_caption: yes
+    number_sections: yes
+    self_contained: yes
+    theme: journal
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  word_document:
+    toc: yes
+    toc_depth: '3'
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+```{r include = FALSE}
+require(dplyr)
+require(ggplot2)
+require(readxl)
+require(agricolae)
+require(emmeans)
+require(lattice)
+require(lme4)
+require(nlme)
+require(car)
+require(glmmTMB)
+require(brms)
+require(rms)
+require(broom.mixed)
+require(multcomp)
+require(multcompView)
+require(MASS)
+require(olsrr)
+```
+
+# Plant Survival
+
+```{r}
+biomass_data_run1 <- read_xlsx("biomass_data.xlsx", sheet = "Run1")
+biomass_data_run2 <- read_xlsx("biomass_data.xlsx", sheet = "Run2")
+```
+
+## Comparison between C. virgata Experiments
+
+```{r}
+biomass_data_run1_trim <- biomass_data_run1[,-c(1, 2, 4, 6, 10)]
+biomass_data_run2_trim <- biomass_data_run2[,-c(1, 2, 4, 6, 8)]
+```
+
+Selecting FTR rows
+
+```{r}
+biomass_data_run1_FTR <- filter(biomass_data_run1_trim, Species == "FTR")
+biomass_data_run2_FTR <- filter(biomass_data_run2_trim, Species == "FTR")
+```
+
+Creating survival column
+
+```{r}
+biomass_data_run1_FTR_survival <- mutate(biomass_data_run1_FTR, survival = ((Number_surviving_after_28_days/Plant_Number)))
+
+biomass_data_run2_FTR_survival <- mutate(biomass_data_run2_FTR, survival = ((Number_surviving_after_28_days/Plant_Number)))
+```
+
+Combining data sets
+
+```{r}
+survival_FTR_combine <- bind_rows(biomass_data_run1_FTR_survival, biomass_data_run2_FTR_survival, .id = "id")
+```
+
+```{r}
+survival_FTR_combine$id <- as.factor(survival_FTR_combine$id) 
+survival_FTR_combine$Block <- as.factor(survival_FTR_combine$Block) 
+survival_FTR_combine$Treatment <- as.factor(survival_FTR_combine$Treatment) 
+```
+
+```{r}
+vor_remove <- c("vor", "para/vor") #Remove voraxor involved treatments
+
+survival_FTR_combine_filter <- filter(survival_FTR_combine, !Treatment %in% vor_remove)
+
+glmer.FTR_survival <- glmer(survival ~ id + (1|Block), family = binomial, data = survival_FTR_combine_filter)
+summary(glmer.FTR_survival)
+```
+
+Can't combine as p < 0.05
+
+## Comparison between S. oleraceus Experiments
+
+Selecting ST rows
+
+```{r}
+biomass_data_run1_ST <- filter(biomass_data_run1_trim, Species == "ST")
+biomass_data_run2_ST <- filter(biomass_data_run2_trim, Species == "ST")
+```
+
+Creating survival column
+
+```{r}
+biomass_data_run1_ST_survival <- mutate(biomass_data_run1_ST, survival = ((Number_surviving_after_28_days/Plant_Number)))
+
+biomass_data_run2_ST_survival <- mutate(biomass_data_run2_ST, survival = ((Number_surviving_after_28_days/Plant_Number)))
+```
+
+Combining data sets
+
+```{r}
+survival_ST_combine <- bind_rows(biomass_data_run1_ST_survival, biomass_data_run2_ST_survival, .id = "id")
+```
+
+```{r}
+survival_ST_combine$id <- as.factor(survival_ST_combine$id) 
+survival_ST_combine$Block <- as.factor(survival_ST_combine$Block) 
+survival_ST_combine$Treatment <- as.factor(survival_ST_combine$Treatment) 
+```
+
+```{r}
+glmer.ST_survival <- glmer(survival ~ id + (1|Block), family = binomial, data = survival_ST_combine)
+summary(glmer.ST_survival)
+```
+
+Can't combine as p < 0.05
+
+## C. virgata Analysis
+
+### Run 1
+
+Generalised least squares regression
+
+```{r}
+biomass_data_run1_FTR_survival <- mutate(biomass_data_run1_FTR_survival, asin_percent_damage = (asin(sqrt(survival))))
+
+biomass_data_run1_FTR_survival <- mutate(biomass_data_run1_FTR_survival, asin_backtrans_percent_damage = ((sin(asin_percent_damage))^2))
+
+gls.FTR_R1_survival_M1 <- gls(asin_percent_damage ~ Treatment + Block, data = biomass_data_run1_FTR_survival)
+
+plot(gls.FTR_R1_survival_M1) # Fanning residuals - model assumptions were not met
+```
+
+Backtranformed means
+
+```{r}
+avg_asin_FTR_R1_survival <- biomass_data_run1_FTR_survival %>%
+  group_by(Treatment) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_sin_FTR_R1_survival <- mutate(avg_asin_FTR_R1_survival, mean_asin_backtrans = ((sin(mean_asin))^2))
+
+avg_sin_FTR_R1_survival
+```
+
+### Run 2
+
+```{r}
+biomass_data_run2_FTR_survival$Treatment <- as.factor(biomass_data_run2_FTR_survival$Treatment) 
+biomass_data_run2_FTR_survival$Block <- as.factor(biomass_data_run2_FTR_survival$Block)
+```
+
+```{r}
+biomass_data_run2_FTR_survival <- mutate(biomass_data_run2_FTR_survival, asin_percent_damage = (asin(sqrt(survival))))
+
+biomass_data_run2_FTR_survival <- mutate(biomass_data_run2_FTR_survival, asin_backtrans_percent_damage = ((sin(asin_percent_damage))^2))
+
+gls.FTR_R2_survival <- gls(asin_percent_damage ~ Treatment + Block, data = biomass_data_run2_FTR_survival)
+
+plot(gls.FTR_R2_survival)
+
+Anova(gls.FTR_R2_survival)
+
+emm.FTR_R2_Survival <- emmeans(gls.FTR_R2_survival, specs = ~ Treatment)
+
+cld(emm.FTR_R2_Survival) 
+```
+
+Backtransformed means
+
+```{r}
+avg_asin_FTR_R2_survival <- biomass_data_run2_FTR_survival %>%
+  group_by(Treatment) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_sin_FTR_R2_survival <- mutate(avg_asin_FTR_R2_survival, mean_asin_backtrans = ((sin(mean_asin))^2))
+
+avg_sin_FTR_R2_survival
+```
+
+
+## S. oleraceus Analysis
+
+### Run 1
+
+```{r}
+biomass_data_run1_ST_survival <- mutate(biomass_data_run1_ST_survival, asin_percent_damage = (asin(sqrt(survival))))
+
+biomass_data_run1_ST_survival <- mutate(biomass_data_run1_ST_survival, asin_backtrans_percent_damage = ((sin(asin_percent_damage))^2))
+
+gls.ST_R1_survival <- gls(asin_percent_damage ~ Treatment + Block, data = biomass_data_run1_ST_survival)
+
+plot(gls.ST_R1_survival)
+
+Anova(gls.ST_R1_survival)
+
+emm.ST_R1_Survival <- emmeans(gls.ST_R1_survival, specs = ~ Treatment)
+
+cld(emm.ST_R1_Survival) 
+```
+
+```{r}
+avg_asin_ST_R1_survival <- biomass_data_run1_ST_survival %>%
+  group_by(Treatment) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_sin_ST_R1_survival <- mutate(avg_asin_ST_R1_survival, mean_asin_backtrans = ((sin(mean_asin))^2))
+
+avg_sin_ST_R1_survival
+```
+
+### Run 2
+
+```{r}
+biomass_data_run2_ST_survival$Treatment <- as.factor(biomass_data_run2_ST_survival$Treatment) 
+biomass_data_run2_ST_survival$Block <- as.factor(biomass_data_run2_ST_survival$Block)
+```
+
+```{r}
+biomass_data_run2_ST_survival <- mutate(biomass_data_run2_ST_survival, asin_percent_damage = (asin(sqrt(survival))))
+
+biomass_data_run2_ST_survival <- mutate(biomass_data_run2_ST_survival, asin_backtrans_percent_damage = ((sin(asin_percent_damage))^2))
+
+gls.ST_R2_survival <- gls(asin_percent_damage ~ Treatment + Block, data = biomass_data_run2_ST_survival)
+
+plot(gls.ST_R2_survival)
+
+Anova(gls.ST_R2_survival)
+
+emm.ST_R2_Survival <- emmeans(gls.ST_R2_survival, specs = ~ Treatment)
+
+cld(emm.ST_R2_Survival) 
+```
+
+```{r}
+avg_asin_ST_R2_survival <- biomass_data_run2_ST_survival %>%
+  group_by(Treatment) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_sin_ST_R2_survival <- mutate(avg_asin_ST_R2_survival, mean_asin_backtrans = ((sin(mean_asin))^2))
+```
+
+
+## Conyza spp. R1 Analysis
+
+```{r}
+biomass_data_run1_FB <- filter(biomass_data_run1_trim, Species == "FB")
+biomass_data_run1_FB_survival <- mutate(biomass_data_run1_FB, survival = ((Number_surviving_after_28_days/Plant_Number)))
+biomass_data_run1_FB_survival_clean <- biomass_data_run1_FB_survival[complete.cases(biomass_data_run1_FB_survival),]
+```
+
+```{r}
+biomass_data_run1_FB_survival_clean_asin <- mutate(biomass_data_run1_FB_survival_clean, asin_percent_damage=(asin(sqrt(survival))))
+
+gls.FB_R1_survival <- gls(asin_percent_damage ~ Treatment + Block, data = biomass_data_run1_FB_survival_clean_asin)
+
+plot(gls.FB_R1_survival)
+
+Anova(gls.FB_R1_survival)
+
+emm.FB_R1_Survival <- emmeans(gls.FB_R1_survival, specs = ~ Treatment)
+
+cld(emm.FB_R1_Survival) 
+```
+
+```{r}
+avg_asin_FB_R1_survival <- biomass_data_run1_FB_survival_clean_asin %>%
+  group_by(Treatment) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_sin_FB_R1_survival <- mutate(avg_asin_FB_R1_survival, mean_asin_backtrans = ((sin(mean_asin))^2))
+
+avg_sin_FB_R1_survival
+```
+
+
+## Conyza spp. R2 Analysis
+
+```{r}
+biomass_data_run2_FB <- filter(biomass_data_run2_trim, Species == "FB")
+biomass_data_run2_FB_survival <- mutate(biomass_data_run2_FB, survival = ((Number_surviving_after_28_days/Plant_Number)))
+```
+
+```{r}
+biomass_data_run2_FB_survival <- mutate(biomass_data_run2_FB_survival, asin_percent_damage = (asin(sqrt(survival))))
+
+gls.FB_R2_survival <- gls(asin_percent_damage ~ Treatment + Block, data = biomass_data_run2_FB_survival)
+
+plot(gls.FB_R2_survival)
+
+Anova(gls.FB_R2_survival)
+
+emm.FB_R2_Survival <- emmeans(gls.FB_R2_survival, specs = ~ Treatment)
+
+cld(emm.FB_R2_Survival) 
+```
+
+```{r}
+avg_asin_FB_R2_survival <- biomass_data_run2_FB_survival %>%
+  group_by(Treatment) %>%
+  summarise(mean_asin = mean(asin_percent_damage))
+
+avg_sin_FB_R2_survival <- mutate(avg_asin_FB_R2_survival, mean_asin_backtrans = ((sin(mean_asin))^2))
+
+avg_sin_FB_R2_survival
+```
